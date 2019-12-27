@@ -10,6 +10,33 @@ pub struct Matrix<T: Default + Clone> {
     num_nodes: usize,
 }
 
+impl<T: Default + Clone> Matrix<T> {
+    /// Create a new symmetrical matrix of size `num_nodes x num_nodes`.
+    pub fn new(num_nodes: usize) -> Matrix<T> {
+        Matrix {
+            upper_right: vec![T::default(); num_entries(num_nodes)],
+            num_nodes,
+        }
+    }
+
+    /// Returns the number of rows (or columns) in the matrix.
+    pub fn dimension(&self) -> usize {
+        self.num_nodes
+    }
+
+    /// Return an iterator over a single row in the matrix.
+    /// Since the matrix is symmetrical you can just as well treat
+    /// this as a column iterator.
+    pub fn row_iter(&self, row: usize) -> impl Iterator<Item=&T> {
+        RowIter {
+            matrix: &self,
+            col: 0,
+            row,
+        }
+    }
+}
+
+
 impl<T> fmt::Debug for Matrix<T>
     where T: fmt::Display + Default + Clone {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -24,15 +51,7 @@ impl<T> fmt::Debug for Matrix<T>
     }
 }
 
-impl<T: Default + Clone> Matrix<T> {
-    pub fn new(num_nodes: usize) -> Matrix<T> {
-        Matrix {
-            upper_right: vec![T::default(); num_entries(num_nodes)],
-            num_nodes,
-        }
-    }
-}
-
+/// Number of entries needed to store connections between `num_nodes`.
 fn num_entries(num_nodes: usize) -> usize {
     // We store every diagonal from the top right corner until the middle one.
     // So the number of entries is 1 + 2 + ... + n = n * (n+1) / 2.
@@ -93,6 +112,25 @@ impl<T: Default + Clone> IndexMut<[usize; 2]> for Matrix<T> {
     }
 }
 
+struct RowIter<'a, T: Default + Clone> {
+    matrix: &'a Matrix<T>,
+    col: usize,
+    row: usize,
+}
+
+impl<'a, T: Default + Clone> Iterator for RowIter<'a, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.col < self.matrix.num_nodes {
+            let res = &self.matrix[[self.row, self.col]];
+            self.col += 1;
+            Some(res)
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,11 +154,12 @@ mod tests {
     }
 
     #[test]
-    fn completely_test_small_matrices() {
+    fn test_small_matrices() {
         let mut m1x1 = Matrix::new(1);
         m1x1[[0,0]] = 42;
         println!("{:?}", m1x1);
         assert_eq!(m1x1[[0,0]], 42);
+        assert_eq!(m1x1.row_iter(0).sum::<u32>(), 42);
 
         let mut m2x2 = Matrix::new(2);
         m2x2[[0, 0]] = 42;
@@ -130,6 +169,14 @@ mod tests {
         assert_eq!(m2x2[[0,0]], 42);
         assert_eq!(m2x2[[0,1]], 43);
         assert_eq!(m2x2[[1,1]], 44);
+        let mut it = m2x2.row_iter(0);
+        assert_eq!(*it.next().unwrap(), 42);
+        assert_eq!(*it.next().unwrap(), 43);
+        assert_eq!(it.next(), None);
+        let mut it2 = m2x2.row_iter(1);
+        assert_eq!(*it2.next().unwrap(), 43);
+        assert_eq!(*it2.next().unwrap(), 44);
+        assert_eq!(it2.next(), None);
 
         let mut m5x5 = Matrix::new(5);
         for row in 0..5 {
