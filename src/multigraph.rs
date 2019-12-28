@@ -45,7 +45,7 @@ fn read<T: std::str::FromStr>(input: Option<io::Result<String>>, unit: &str) -> 
 impl MultiGraph {
     /// # Panics
     /// If the graph doesn't have any edges or nodes.
-    fn from_file(file: &Path) -> io::Result<Self> {
+    pub fn from_file(file: &Path) -> io::Result<Self> {
         let mut lines = io::BufReader::new(File::open(file)?).lines();
         let num_nodes: usize = read(lines.next(), "the number of nodes")?;
         let num_edges: usize = read(lines.next(), "the number of edges")?;
@@ -136,21 +136,21 @@ impl MultiGraph {
         }
     }
 
-    fn num_edges(&self) -> usize {
+    pub fn num_edges_current(&self) -> usize {
         self.edges.stored_entries().map(|v| *v as usize).sum()
     }
 
-    fn num_nodes_current(&self) -> usize {
+    pub fn num_nodes_current(&self) -> usize {
         self.edges.dimension()
     }
 
-    fn num_nodes_original(&self) -> usize {
+    pub fn num_nodes_original(&self) -> usize {
         self.node_to_row.len()
     }
 
     /// `n1` and `n2` must be internal indexes (can be different from original
     /// indexes after contraction).
-    fn num_edges_between(&self, n1: usize, n2: usize) -> usize {
+    pub fn num_edges_between(&self, n1: usize, n2: usize) -> usize {
         self.edges[[n1, n2]] as usize
     }
 
@@ -197,6 +197,11 @@ impl MultiGraph {
             .filter(|(_, &v)| v == internal)
             .map(|(i, _)| i)
             .collect()
+    }
+
+    /// The values of the iterator have the shape `(orig_index, new_index)`.
+    pub fn original_nodes_to_current(&self) -> impl Iterator<Item=(usize,usize)> + '_ {
+        self.node_to_row.iter().copied().enumerate()
     }
 
     /// # Panics
@@ -349,7 +354,7 @@ mod tests {
         //   1---2
         // after (expected):
         // 0,1---2
-        assert_eq!(mg.num_edges(), 2);
+        assert_eq!(mg.num_edges_current(), 2);
         assert_eq!(mg.original_nodes_of(0), vec![0, 1]);
         // There is only one edge left.
         let re = mg.random_edge();
