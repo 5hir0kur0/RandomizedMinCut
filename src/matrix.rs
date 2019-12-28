@@ -7,21 +7,25 @@ pub struct Matrix<T: Default + Clone> {
     /// Expoloit that the matrix is symmetrical and only store half of it.
     /// Only the entries with row <= column are stored.
     upper_right: Vec<T>,
-    num_nodes: usize,
+    num_rows: usize,
+    /// Needed for the deletion support.
+    /// The deletion doesn't allocate or free memory.
+    offset: usize,
 }
 
 impl<T: Default + Clone> Matrix<T> {
-    /// Create a new symmetrical matrix of size `num_nodes x num_nodes`.
-    pub fn new(num_nodes: usize) -> Matrix<T> {
+    /// Create a new symmetrical matrix of size `num_rows x num_rows`.
+    pub fn new(num_rows: usize) -> Matrix<T> {
         Matrix {
-            upper_right: vec![T::default(); num_entries(num_nodes)],
-            num_nodes,
+            upper_right: vec![T::default(); num_entries(num_rows)],
+            num_rows,
+            offset: 0,
         }
     }
 
     /// Returns the number of rows (or columns) in the matrix.
     pub fn dimension(&self) -> usize {
-        self.num_nodes
+        self.num_rows
     }
 
     /// Return an iterator over a single row in the matrix.
@@ -33,11 +37,6 @@ impl<T: Default + Clone> Matrix<T> {
             col: 0,
             row,
         }
-    }
-
-    /// Same as `row_iter` since the matrix is symmetrical.
-    pub fn col_iter(&self, col: usize) -> impl Iterator<Item=&T> {
-        self.row_iter(col)
     }
 
     /// Iterator over the diagonal of the matrix.
@@ -53,16 +52,26 @@ impl<T: Default + Clone> Matrix<T> {
     /// I.e. entries that are the same as stored entries for symmetrical reasons
     /// won't be in the iterator.
     pub fn stored_entries(&self) -> impl Iterator<Item=&T> {
-        self.upper_right.iter()
+        self.upper_right[self.offset..].iter()
+    }
+
+    /// # Panics
+    /// If there is no row/col 0 (i.e. if the matrix is a 0x0 matrix).
+    pub fn delete_row_and_col_0(&mut self) {
+        if self.num_rows == 0 {
+            panic!("Trying to delete from empty matrix.");
+        }
+        self.offset += self.num_rows;
+        self.num_rows -= 1;
     }
 }
 
 impl<T> fmt::Debug for Matrix<T>
     where T: fmt::Display + Default + Clone {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for row in 0..self.num_nodes {
+        for row in 0..self.num_rows {
             write!(f, "{}", self[[row, 0]])?;
-            for col in 1..self.num_nodes {
+            for col in 1..self.num_rows {
                 write!(f, ", {}", self[[row, col]])?;
             }
             write!(f, "\n")?;
@@ -71,17 +80,32 @@ impl<T> fmt::Debug for Matrix<T>
     }
 }
 
-/// Number of entries needed to store connections between `num_nodes`.
-fn num_entries(num_nodes: usize) -> usize {
+impl<T> Clone for Matrix<T> where T: Default + Clone {
+    /// Clone the matrix.
+    /// Note that this does *not* copy the deleted rows and colums, but since
+    /// those are not accessible through the public interface of `Matrix` anyway
+    /// this is not a problem (but saves a lot of memory).
+    fn clone(&self) -> Self {
+        Matrix {
+            upper_right: self.upper_right[self.offset..].to_vec(),
+            offset: 0,
+            num_rows: self.num_rows,
+        }
+    }
+}
+
+/// Number of entries stored in the matrix (NOT including the ones that are not
+/// stored for symmetrical reasons)
+fn num_entries(num_rows: usize) -> usize {
     // We store every diagonal from the top right corner until the middle one.
     // So the number of entries is 1 + 2 + ... + n = n * (n+1) / 2.
-    (num_nodes * (num_nodes + 1)) / 2
+    (num_rows * (num_rows + 1)) / 2
 }
 
 /// Calculates the index in a one-dimensional vector representing the
 /// two-dimensional symmetrical matrix and storing only the upper right half of
 /// it. `row` must be smaller than or equal to `col`.
-fn upper_right_index([row, col]: [usize; 2], num_nodes: usize) -> usize {
+fn upper_right_index([row, col]: [usize; 2], num_rows: usize) -> usize {
     debug_assert!(row <= col);
     // The first row is full, after that each row has one element less.
     // So in each row there are exactly the row number of elements "missing".
@@ -90,7 +114,7 @@ fn upper_right_index([row, col]: [usize; 2], num_nodes: usize) -> usize {
     let first_of_row = if row == 0 {
         0
     } else {
-        row * num_nodes - (row * (row - 1)) / 2
+        row * num_rows - (row * (row - 1)) / 2
     };
     // At the beginning of the row there are `row` elements missing.
     // So unless we are in row zero, this value will actually point to an
@@ -103,32 +127,34 @@ fn upper_right_index([row, col]: [usize; 2], num_nodes: usize) -> usize {
 
 /// Calculate the index for the specified row and column in the vector
 /// representing the matrix.
+/// The `offset` is added to the result.
 /// # Panics
-/// Panics if `row >= num_nodes` or `col >= num_nodes`.
-fn calculate_index([row, col]: [usize; 2], num_nodes: usize) -> usize {
-    if row >= num_nodes || col >= num_nodes {
+/// Panics if `row >= num_rows` or `col >= num_rows`.
+fn calculate_index([row, col]: [usize; 2], num_rows: usize, offset: usize)
+    -> usize {
+    if row >= num_rows || col >= num_rows {
         panic!("Index out of range: [{}, {}] (Matrix is size {2}x{2})", row,
-               col, num_nodes);
+               col, num_rows);
     }
-    if row <= col {
-        upper_right_index([row, col], num_nodes)
+    offset + if row <= col {
+        upper_right_index([row, col], num_rows)
     } else {
         // Since the matrix is symmetrical we can just swap the dimensions for
         // the lower left half.
-        upper_right_index([col, row], num_nodes)
+        upper_right_index([col, row], num_rows)
     }
 }
 
 impl<T: Default + Clone> Index<[usize; 2]> for Matrix<T> {
     type Output = T;
     fn index(&self, index: [usize; 2]) -> &Self::Output {
-        &self.upper_right[calculate_index(index, self.num_nodes)]
+        &self.upper_right[calculate_index(index, self.num_rows, self.offset)]
     }
 }
 
 impl<T: Default + Clone> IndexMut<[usize; 2]> for Matrix<T> {
     fn index_mut(&mut self, index: [usize; 2]) -> &mut Self::Output {
-        &mut self.upper_right[calculate_index(index, self.num_nodes)]
+        &mut self.upper_right[calculate_index(index, self.num_rows, self.offset)]
     }
 }
 
@@ -141,7 +167,7 @@ struct RowIter<'a, T: Default + Clone> {
 impl<'a, T: Default + Clone> Iterator for RowIter<'a, T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.col < self.matrix.num_nodes {
+        if self.col < self.matrix.num_rows {
             let res = &self.matrix[[self.row, self.col]];
             self.col += 1;
             Some(res)
@@ -159,7 +185,7 @@ struct DiagIter<'a, T: Default + Clone> {
 impl<'a, T: Default + Clone> Iterator for DiagIter<'a, T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pos < self.matrix.num_nodes {
+        if self.pos < self.matrix.num_rows {
             let res = &self.matrix[[self.pos, self.pos]];
             self.pos += 1;
             Some(res)
@@ -260,5 +286,48 @@ mod tests {
     fn fail_out_of_range2() {
         let m: Matrix<()> = Matrix::new(123);
         m[[0, 123]]
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_delete_empty() {
+        let mut m: Matrix<()> = Matrix::new(0);
+        m.delete_row_and_col_0()
+    }
+
+    #[test]
+    fn test_delete() {
+        let mut m: Matrix<i32> = Matrix::new(3);
+        m[[0, 1]] = 1;
+        m[[0, 2]] = 2;
+        m[[1, 2]] = 3;
+        // the matrix looks like this:
+        // 0, 1, 2
+        // 1, 0, 3
+        // 2, 3, 0
+        m.delete_row_and_col_0();
+        dbg!(&m);
+        assert_eq!(m.dimension(), 2);
+        assert_eq!(m.offset, 3);
+        assert_eq!(m.stored_entries().copied().collect::<Vec<i32>>(), vec![0, 3, 0]);
+        assert_eq!(m[[0, 0]], 0);
+        assert_eq!(m[[1, 1]], 0);
+        assert_eq!(m[[0, 1]], 3);
+        assert_eq!(m[[1, 0]], 3);
+
+        let mut m2: Matrix<u8> = Matrix::new(100);
+        for i in 0..100 {
+            m2[[i, 0]] = i as u8 + 1;
+        }
+        assert_eq!(m2.row_iter(0).copied().collect::<Vec<_>>(),
+                   (1..=100).collect::<Vec<_>>());
+        for i in 0..100 {
+            m2[[i, 1]] = 100 + i as u8 + 1;
+        }
+        assert_eq!(m2.row_iter(1).copied().collect::<Vec<_>>(),
+                   (101..=200).collect::<Vec<_>>());
+        m2.delete_row_and_col_0();
+        assert_eq!(m2.row_iter(0).copied().collect::<Vec<_>>(),
+                   (102..=200).collect::<Vec<_>>());
     }
 }
