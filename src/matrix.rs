@@ -34,8 +34,28 @@ impl<T: Default + Clone> Matrix<T> {
             row,
         }
     }
-}
 
+    /// Same as `row_iter` since the matrix is symmetrical.
+    pub fn col_iter(&self, col: usize) -> impl Iterator<Item=&T> {
+        self.row_iter(col)
+    }
+
+    /// Iterator over the diagonal of the matrix.
+    /// [[0, 0]], [[1, 1]], ..., [[n, n]]
+    pub fn diag_iter(&self) -> impl Iterator<Item=&T> {
+        DiagIter {
+            matrix: &self,
+            pos: 0,
+        }
+    }
+
+    /// Iterator over the entries that are actually stored.
+    /// I.e. entries that are the same as stored entries for symmetrical reasons
+    /// won't be in the iterator.
+    pub fn stored_entries(&self) -> impl Iterator<Item=&T> {
+        self.upper_right.iter()
+    }
+}
 
 impl<T> fmt::Debug for Matrix<T>
     where T: fmt::Display + Default + Clone {
@@ -131,6 +151,24 @@ impl<'a, T: Default + Clone> Iterator for RowIter<'a, T> {
     }
 }
 
+struct DiagIter<'a, T: Default + Clone> {
+    matrix: &'a Matrix<T>,
+    pos: usize,
+}
+
+impl<'a, T: Default + Clone> Iterator for DiagIter<'a, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos < self.matrix.num_nodes {
+            let res = &self.matrix[[self.pos, self.pos]];
+            self.pos += 1;
+            Some(res)
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,6 +198,7 @@ mod tests {
         println!("{:?}", m1x1);
         assert_eq!(m1x1[[0,0]], 42);
         assert_eq!(m1x1.row_iter(0).sum::<u32>(), 42);
+        assert_eq!(m1x1.diag_iter().sum::<u32>(), 42);
 
         let mut m2x2 = Matrix::new(2);
         m2x2[[0, 0]] = 42;
@@ -177,6 +216,10 @@ mod tests {
         assert_eq!(*it2.next().unwrap(), 43);
         assert_eq!(*it2.next().unwrap(), 44);
         assert_eq!(it2.next(), None);
+        let mut it3 = m2x2.diag_iter();
+        assert_eq!(*it3.next().unwrap(), 42);
+        assert_eq!(*it3.next().unwrap(), 44);
+        assert_eq!(it3.next(), None);
 
         let mut m5x5 = Matrix::new(5);
         for row in 0..5 {
@@ -191,6 +234,11 @@ mod tests {
                 assert_eq!(m5x5[[row, col]], col * 10 + row);
             }
         }
+        let mut it4 = m5x5.diag_iter();
+        for i in 0..5 {
+            assert_eq!(*it4.next().unwrap(), i * 10 + i);
+        }
+        assert_eq!(it4.next(), None);
     }
 
     #[test]
