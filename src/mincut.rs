@@ -3,6 +3,7 @@ use crate::gml;
 use std::collections::HashSet;
 use std::io;
 use std::iter::FromIterator;
+use std::thread;
 
 #[derive(Debug)]
 /// Return type for min-cut algorithms.
@@ -29,7 +30,7 @@ impl MinCutEstimate {
     /// If the expectations mentioned before are not met or the `MultiGraph`
     /// violates some invariants (which should be impossible).
     fn new(graph: MultiGraph) -> Self {
-        debug_assert!(graph.num_nodes_current() == 2);
+        debug_assert_eq!(graph.num_nodes_current(), 2);
         let mut node_set_1 = HashSet::new();
         let mut node_set_2 = HashSet::new();
         for (orig_index, new_index) in graph.original_nodes_to_current() {
@@ -121,13 +122,62 @@ impl MinCutEstimate {
 }
 
 /// GUESSMINCUT algorithm from page 20 in the lecture notes.
-/// The graph has to be connected. You can check with `dfs`.
+/// The graph has to be connected. You can check with `check_connected`.
+/// Also it must have at least two nodes.
 pub fn guess_mincut(mut mg: MultiGraph) -> MinCutEstimate {
     for _ in 0..mg.num_nodes_original() - 2 {
         let edge = mg.random_edge();
         mg.contract_edge(edge);
     }
     MinCutEstimate::new(mg)
+}
+
+/// FASTCUT algorithm from page 21 in the lecture notes.
+/// The graph has to be connected. You can check with `check_connected`.
+/// Also it must have at least two nodes.
+pub fn fastcut(mg: MultiGraph) -> MinCutEstimate {
+    internal_fastcut(mg, 0)
+}
+
+fn internal_fastcut(mut mg: MultiGraph, depth: usize) -> MinCutEstimate {
+    let n = mg.num_nodes_current();
+    if n > 2 {
+        let desired_node_num = ((n + 1) as f64 / f64::sqrt(2.0)) as usize;
+        let m1;
+        let m2;
+        if depth >= 2 {
+            m1 = internal_fastcut(contract(mg.clone(), desired_node_num), depth + 1);
+            m2 = internal_fastcut(contract(mg, desired_node_num), depth + 1);
+        } else {
+            let mg_clone = mg.clone();
+            let t = thread::spawn(move ||
+                internal_fastcut(contract(mg_clone, desired_node_num), depth + 1));
+            m2 = internal_fastcut(contract(mg, desired_node_num), depth + 1);
+            m1 = t.join().expect("Multithreading error.");
+        }
+        min(m1, m2)
+    } else {
+        MinCutEstimate::new(mg)
+    }
+}
+
+fn min(m1: MinCutEstimate, m2: MinCutEstimate) -> MinCutEstimate {
+    if m1.cut_size < m2.cut_size {
+        m1
+    } else {
+        m2
+    }
+}
+
+
+fn contract(mut mg: MultiGraph, desired_node_num: usize) -> MultiGraph {
+    let num_nodes = mg.num_nodes_current();
+    if num_nodes <= desired_node_num { return mg; }
+    for _ in 0..(num_nodes - desired_node_num) {
+        let re = mg.random_edge();
+        mg.contract_edge(re);
+    }
+    mg
 }
 
 

@@ -1,5 +1,5 @@
 use crate::matrix::Matrix;
-use rand::{self, Rng};
+use rand::{rngs, self, SeedableRng, Rng};
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
@@ -9,11 +9,11 @@ type EdgeCount = u32;
 /// `T` is the type used to store the number of edges between nodes.
 /// Nodes are always represented as indexes into a matrix of `T`,
 /// so nodes don't have names and are just `usize` values.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MultiGraph {
     edges: Matrix<EdgeCount>,
     cum_row_sums: Vec<usize>,
-    rng: rand::rngs::ThreadRng,
+    rng: rngs::StdRng,
     /// Stores which nodes are "contained" in which row/col in the matrix.
     /// After contracting an edge the two nodes at the beginning and at the end
     /// are represented by just one row/col in the matrix.
@@ -73,7 +73,7 @@ impl MultiGraph {
         let result = MultiGraph {
             edges,
             cum_row_sums,
-            rng: rand::thread_rng(),
+            rng: rngs::StdRng::from_rng(rand::thread_rng()).unwrap(),
             node_to_row: (0..num_nodes).collect(),
         };
         Self::check_num_edges_right(num_edges, total_sum)?;
@@ -301,11 +301,12 @@ impl From<Matrix<EdgeCount>> for MultiGraph {
         MultiGraph {
             edges: m,
             cum_row_sums,
-            rng: rand::thread_rng(),
+            rng: rngs::StdRng::from_rng(rand::thread_rng()).unwrap(),
             node_to_row,
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {

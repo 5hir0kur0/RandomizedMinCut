@@ -36,12 +36,12 @@ fn main() -> std::io::Result<()> {
         }).collect::<Vec<_>>();
         let out_path = unique_name(&path_arg);
         let mut file = File::create(&out_path)?;
-        let mincut = mincut(mg, check_connected, mincut::guess_mincut);
+        let mincut = mincut(mg, check_connected, mincut::fastcut);
         println!("{:?}", mincut);
         println!("writing gml to {}...", out_path);
         mincut.write_gml_visualization(&mut file, edges)?;
     } else {
-        let mincut = mincut(mg, check_connected, mincut::guess_mincut);
+        let mincut = mincut(mg, check_connected, mincut::fastcut);
         println!("{:?}", mincut);
     }
     Ok(())
