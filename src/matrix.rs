@@ -55,6 +55,19 @@ impl<T: Default + Clone> Matrix<T> {
         self.upper_right[self.offset..].iter()
     }
 
+    /// Iterator over the entries that are actually stored.
+    /// I.e. entries that are the same as stored entries for symmetrical reasons
+    /// won't be in the iterator.
+    /// The array contrains the coordinates with the first coordinate being
+    /// smaller than or equal to the second.
+    pub fn stored_entries_with_coordinates(&self) -> impl Iterator<Item=([usize; 2], &T)> {
+        EntryIter {
+            matrix: &self,
+            col: 0,
+            row: 0,
+        }
+    }
+
     /// # Panics
     /// If there is no row/col 0 (i.e. if the matrix is a 0x0 matrix).
     pub fn delete_row_and_col_0(&mut self) {
@@ -169,6 +182,31 @@ impl<'a, T: Default + Clone> Iterator for RowIter<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         if self.col < self.matrix.num_rows {
             let res = &self.matrix[[self.row, self.col]];
+            self.col += 1;
+            Some(res)
+        } else {
+            None
+        }
+    }
+}
+
+struct EntryIter<'a, T: Default + Clone> {
+    matrix: &'a Matrix<T>,
+    col: usize,
+    row: usize,
+}
+
+impl<'a, T: Default + Clone> Iterator for EntryIter<'a, T> {
+    type Item = ([usize; 2], &'a T);
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.col < self.matrix.num_rows {
+            let res = ([self.row, self.col], &self.matrix[[self.row, self.col]]);
+            self.col += 1;
+            Some(res)
+        } else if self.row < self.matrix.num_rows - 1 {
+            self.row += 1;
+            self.col = self.row;
+            let res = ([self.row, self.col], &self.matrix[[self.row, self.col]]);
             self.col += 1;
             Some(res)
         } else {
@@ -293,6 +331,25 @@ mod tests {
     fn test_delete_empty() {
         let mut m: Matrix<()> = Matrix::new(0);
         m.delete_row_and_col_0()
+    }
+
+    #[test]
+    fn test_stored_entries() {
+        let mut m: Matrix<i32> = Matrix::new(3);
+        m[[0, 1]] = 1;
+        m[[0, 2]] = 2;
+        m[[1, 2]] = 3;
+        // the matrix looks like this:
+        // 0, 1, 2
+        // 1, 0, 3
+        // 2, 3, 0
+        assert_eq!(m.stored_entries_with_coordinates()
+                   .collect::<Vec<_>>(),
+                   vec![([0, 0], &0), ([0, 1], &1), ([0, 2], &2), ([1, 1], &0),
+                   ([1, 2], &3), ([2, 2], &0)]);
+        assert_eq!(m.stored_entries().copied().collect::<Vec<i32>>(),
+                   vec![0, 1, 2, 0, 3, 0]);
+
     }
 
     #[test]

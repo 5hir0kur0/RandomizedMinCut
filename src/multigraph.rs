@@ -81,7 +81,7 @@ impl MultiGraph {
     }
 
     fn check_self_loops(m: &Matrix<EdgeCount>) -> io::Result<()> {
-        if m.diag_iter().sum::<u32>() > 0 {
+        if m.diag_iter().sum::<EdgeCount>() > 0 {
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Self loops are not supported.",
@@ -202,6 +202,17 @@ impl MultiGraph {
     /// The values of the iterator have the shape `(orig_index, new_index)`.
     pub fn original_nodes_to_current(&self) -> impl Iterator<Item=(usize,usize)> + '_ {
         self.node_to_row.iter().copied().enumerate()
+    }
+
+    /// Gives the edge coordinates (only unique ones with `source <= target`)
+    /// and the multiplicity of the edges.
+    /// Note that `source` and `target` are internal coordinates which might be
+    /// different from the original node numbers if a contraction has been
+    /// performed.
+    pub fn edges_iter(&self) -> impl Iterator<Item=([usize; 2], usize)> + '_ {
+        self.edges.stored_entries_with_coordinates()
+            .filter(|(_, &count)| count > 0)
+            .map(|(coord, count)| (coord, *count as usize))
     }
 
     /// # Panics
