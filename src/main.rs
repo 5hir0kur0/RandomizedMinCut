@@ -15,6 +15,7 @@ fn main() -> std::io::Result<()> {
     let mut args = env::args().peekable();
     let _ = args.next();
     let mut visualize = false;
+    let check_connected = true;
     if let Some(arg) = args.peek() {
         if arg == "-v" {
             visualize = true;
@@ -35,12 +36,12 @@ fn main() -> std::io::Result<()> {
         }).collect::<Vec<_>>();
         let out_path = unique_name(&path_arg);
         let mut file = File::create(&out_path)?;
-        let mincut = mincut::guess_mincut(mg);
+        let mincut = mincut(mg, check_connected, mincut::guess_mincut);
         println!("{:?}", mincut);
         println!("writing gml to {}...", out_path);
         mincut.write_gml_visualization(&mut file, edges)?;
     } else {
-        let mincut = mincut::guess_mincut(mg);
+        let mincut = mincut(mg, check_connected, mincut::guess_mincut);
         println!("{:?}", mincut);
     }
     Ok(())
@@ -51,5 +52,18 @@ fn unique_name(name: &str) -> String {
         unique_name(&format!("{}_", name))
     } else {
         format!("{}.gml", name)
+    }
+}
+
+fn mincut<F>(mg: MultiGraph, check_connected: bool, f: F)
+    -> mincut::MinCutEstimate
+where F: FnOnce(MultiGraph) -> mincut::MinCutEstimate {
+    if check_connected {
+        match mincut::check_connected(mg) {
+            Ok(mce) => mce,
+            Err(mg) => f(mg),
+        }
+    } else {
+        f(mg)
     }
 }

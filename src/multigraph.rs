@@ -80,6 +80,7 @@ impl MultiGraph {
         Ok(result)
     }
 
+    /// Helper function for the constructor.
     fn check_self_loops(m: &Matrix<EdgeCount>) -> io::Result<()> {
         if m.diag_iter().sum::<EdgeCount>() > 0 {
             Err(io::Error::new(
@@ -91,6 +92,7 @@ impl MultiGraph {
         }
     }
 
+    /// Helper function for the constructor.
     fn check_nodes_edges_not_0(num_nodes: usize, num_edges: usize) -> io::Result<()> {
         if num_nodes == 0 || num_edges == 0 {
             Err(io::Error::new(
@@ -102,6 +104,7 @@ impl MultiGraph {
         }
     }
 
+    /// Helper function for the constructor.
     fn check_exactly_2_numbers(splitted: &Vec<usize>) -> io::Result<()> {
         if splitted.len() != 2 {
             Err(io::Error::new(
@@ -114,6 +117,7 @@ impl MultiGraph {
         }
     }
 
+    /// Helper function for the constructor.
     fn check_node_ref_in_range(splitted: &Vec<usize>, num_nodes: usize) -> io::Result<()> {
         if splitted[0] >= num_nodes || splitted[1] >= num_nodes {
             Err(io::Error::new(
@@ -125,6 +129,7 @@ impl MultiGraph {
         }
     }
 
+    /// Helper function for the constructor.
     fn check_num_edges_right(num_edges: usize, total_sum: usize) -> io::Result<()> {
         if num_edges != total_sum / 2 {
             Err(io::Error::new(
@@ -136,14 +141,17 @@ impl MultiGraph {
         }
     }
 
+    /// Current number of edges in the graph.
     pub fn num_edges_current(&self) -> usize {
         self.edges.stored_entries().map(|v| *v as usize).sum()
     }
 
+    /// Current number of nodes in the graph.
     pub fn num_nodes_current(&self) -> usize {
         self.edges.dimension()
     }
 
+    /// Number of nodes that were in the graph when it was created.
     pub fn num_nodes_original(&self) -> usize {
         self.node_to_row.len()
     }
@@ -213,6 +221,14 @@ impl MultiGraph {
         self.edges.stored_entries_with_coordinates()
             .filter(|(_, &count)| count > 0)
             .map(|(coord, count)| (coord, *count as usize))
+    }
+
+    /// Returns the neighbors of the node.
+    /// This method takes linear time in the number of nodes.
+    pub fn neighbors_of(&self, node: usize) -> impl Iterator<Item=usize> + '_ {
+        self.edges.row_iter(node).enumerate()
+            .filter(|(_, &val)| val > 0)
+            .map(|(i, _)| i)
     }
 
     /// # Panics
