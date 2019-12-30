@@ -80,7 +80,7 @@ fn unique_name(name: &str) -> String {
 /// Otherwise the run time in ms will be returned.
 fn mincut<F>(mg: MultiGraph, check_connected: bool, f: F)
     -> (mincut::MinCutEstimate, usize)
-where F: FnOnce(MultiGraph) -> mincut::MinCutEstimate {
+where F: Fn(MultiGraph) -> mincut::MinCutEstimate {
     use std::time::Instant;
     if check_connected {
         eprintln!("Starting DFS...");
@@ -91,15 +91,47 @@ where F: FnOnce(MultiGraph) -> mincut::MinCutEstimate {
             },
             Err(mg) => {
                 eprintln!("Finished DFS: Graph is connected.");
-                eprintln!("Starting algorithm...");
                 let start = Instant::now();
-                let res = f(mg);
+                let res = run_until_no_improvements(f, mg, 5);
                 (res, start.elapsed().as_millis() as usize)
             },
         }
     } else {
         let start = Instant::now();
-        let res = f(mg);
+        let res = run_until_no_improvements(f, mg, 5);
         (res, start.elapsed().as_millis() as usize)
+    }
+}
+
+fn run_until_no_improvements<F>(f: F, mg: MultiGraph, rounds: usize)
+    -> mincut::MinCutEstimate
+where F: Fn(MultiGraph) -> mincut::MinCutEstimate
+{
+    let mut start = 1;
+    let mut iters = 1;
+    eprintln!("Starting round {}...", iters);
+    let mut best = f(mg.clone());
+    eprintln!(" current best: {}", best.cut_size);
+    loop {
+        let mut stop = true;
+        for _ in start..rounds {
+            iters += 1;
+            eprintln!("Starting round {}...", iters);
+            let mut new_mg = mg.clone();
+            new_mg.new_rng();
+            let res = f(new_mg);
+            eprintln!(" new size: {}", res.cut_size);
+            if res.cut_size < best.cut_size {
+                stop = false;
+                best = res;
+                eprintln!(" current best: {}", best.cut_size);
+                break;
+            }
+        }
+        if stop {
+            println!("ITERATIONS: {}", iters);
+            return best;
+        }
+        start = 0;
     }
 }

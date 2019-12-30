@@ -227,9 +227,8 @@ impl MultiGraph {
     /// Returns which nodes in the original graph an internal node index
     /// represents.
     pub fn original_nodes_of(&self, internal: usize) -> Vec<usize> {
-        self.node_to_row.iter()
-            .enumerate()
-            .filter(|(_, &v)| v == internal)
+        self.original_nodes_to_current()
+            .filter(|&(_, v)| v == internal)
             .map(|(i, _)| i)
             .collect()
     }
@@ -329,6 +328,11 @@ impl MultiGraph {
         }
         self.delete_row_and_col_0();
         // self.row_sums is updated automatically by self.assign_edge_count.
+    }
+
+    /// Create a new RNG.
+    pub fn new_rng(&mut self) {
+        self.rng = rngs::StdRng::from_rng(rand::thread_rng()).unwrap();
     }
 }
 
