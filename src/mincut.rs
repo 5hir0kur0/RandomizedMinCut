@@ -145,7 +145,7 @@ fn internal_fastcut(mut mg: MultiGraph, depth: usize) -> MinCutEstimate {
         let desired_node_num = ((n + 1) as f64 / f64::sqrt(2.0)) as usize;
         let m1;
         let m2;
-        if depth >= 2 {
+        if depth >= 3 {
             m1 = internal_fastcut(contract(mg.clone(), desired_node_num), depth + 1);
             m2 = internal_fastcut(contract(mg, desired_node_num), depth + 1);
         } else {

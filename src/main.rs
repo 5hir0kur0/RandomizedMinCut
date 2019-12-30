@@ -59,9 +59,17 @@ fn mincut<F>(mg: MultiGraph, check_connected: bool, f: F)
     -> mincut::MinCutEstimate
 where F: FnOnce(MultiGraph) -> mincut::MinCutEstimate {
     if check_connected {
+        println!("Starting DFS...");
         match mincut::check_connected(mg) {
-            Ok(mce) => mce,
-            Err(mg) => f(mg),
+            Ok(mce) => {
+                println!("Finished DFS: Graph is unconnected.");
+                mce
+            },
+            Err(mg) => {
+                println!("Finished DFS: Graph is connected.");
+                println!("Starting algorithm...");
+                f(mg)
+            },
         }
     } else {
         f(mg)
