@@ -139,7 +139,7 @@ pub fn fastcut(mg: MultiGraph) -> MinCutEstimate {
     internal_fastcut(mg, 0)
 }
 
-fn internal_fastcut(mut mg: MultiGraph, depth: usize) -> MinCutEstimate {
+fn internal_fastcut(mg: MultiGraph, depth: usize) -> MinCutEstimate {
     let n = mg.num_nodes_current();
     if n > 2 {
         let desired_node_num = ((n + 1) as f64 / f64::sqrt(2.0)) as usize;

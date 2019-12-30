@@ -12,7 +12,8 @@ type EdgeCount = u32;
 #[derive(Debug, Clone)]
 pub struct MultiGraph {
     edges: Matrix<EdgeCount>,
-    cum_row_sums: Vec<usize>,
+    row_sums: Vec<usize>,
+    total_sum: usize,
     rng: rngs::StdRng,
     /// Stores which nodes are "contained" in which row/col in the matrix.
     /// After contracting an edge the two nodes at the beginning and at the end
@@ -20,59 +21,67 @@ pub struct MultiGraph {
     node_to_row: Vec<usize>,
 }
 
-/// Try to parse the input as `T`. If the parsing fails
-/// return an error with the error message "Expected {unit}".
-/// The string is trimmed before parsing.
-fn parse<T: std::str::FromStr>(input: &str, unit: &str) -> io::Result<T> {
-    Ok(input.trim().parse::<T>().or_else(|_| {
-        Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("Expected {}.", unit),
-        ))
-    })?)
-}
-
-/// Try to parse the input as `T`. If the input is not present or
-/// the parsing fails return an error with the error message "Expected {unit}".
-/// Calls `parse()` to do the parsing (see above).
-fn read<T: std::str::FromStr>(input: Option<io::Result<String>>, unit: &str) -> io::Result<T> {
-    let num = input.ok_or_else(|| {
-        io::Error::new(io::ErrorKind::UnexpectedEof, format!("Expected {}.", unit))
-    })??;
-    parse(&num, unit)
-}
-
 impl MultiGraph {
+    /// Try to parse the input as `T`. If the parsing fails
+    /// return an error with the error message "Expected {unit}".
+    /// The string is trimmed before parsing.
+    fn parse<T: std::str::FromStr>(input: &str, unit: &str) -> io::Result<T> {
+        Ok(input.trim().parse::<T>().or_else(|_| {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Expected {}.", unit),
+            ))
+        })?)
+    }
+
+    /// Try to parse the input as `T`. If the input is not present or
+    /// the parsing fails return an error with the error message
+    /// "Expected {unit}".
+    /// Calls `parse()` to do the parsing (see above).
+    fn read<T: std::str::FromStr>(input: Option<io::Result<String>>, unit: &str)
+        -> io::Result<T> {
+        let num = input.ok_or_else(|| {
+            io::Error::new(io::ErrorKind::UnexpectedEof,
+                           format!("Expected {}.", unit))
+        })??;
+        Self::parse(&num, unit)
+    }
+
+    /// Calcualtes the cumulative row sums.
+    fn cum_row_sums(&self) -> impl Iterator<Item=usize> + '_ {
+        self.row_sums.iter().scan(0, |acc, row| {
+                *acc += row;
+                Some(*acc)
+        })
+    }
+
     /// # Panics
     /// If the graph doesn't have any edges or nodes.
     pub fn from_file(file: &Path) -> io::Result<Self> {
         let mut lines = io::BufReader::new(File::open(file)?).lines();
-        let num_nodes: usize = read(lines.next(), "the number of nodes")?;
-        let num_edges: usize = read(lines.next(), "the number of edges")?;
-        Self::check_nodes_edges_not_0(num_nodes, num_edges)?;
+        let num_nodes: usize = Self::read(lines.next(), "the number of nodes")?;
+        let num_edges: usize = Self::read(lines.next(), "the number of edges")?;
+        Self::check_nodes_edges(num_nodes, num_edges)?;
         let mut edges = Matrix::<EdgeCount>::new(num_nodes);
 
         for line in lines {
-            let splitted = line?
-                .split_ascii_whitespace()
-                .map(|s| parse::<usize>(s, "a node number"))
-                .collect::<Result<Vec<usize>, _>>()?;
-            Self::check_exactly_2_numbers(&splitted)?;
-            Self::check_node_ref_in_range(&splitted, num_nodes)?;
-            edges[[splitted[0], splitted[1]]] += 1;
+            let (source, target) = Self::retrieve_source_target(&line?)?;
+            Self::check_node_ref_in_range(source, target, num_nodes)?;
+            // direct access is OK since we update row_sums later...
+            edges[[source, target]] += 1;
         }
 
         Self::check_self_loops(&edges)?;
 
-        let cum_row_sums: Vec<usize> = (0..num_nodes).scan(0, |acc, row| {
-                *acc += edges.row_iter(row).map(|v| *v as usize).sum::<usize>();
-                Some(*acc)
-        }).collect();
+        let row_sums: Vec<usize> = (0..num_nodes).map(|row|
+                edges.row_iter(row).map(|v| *v as usize).sum::<usize>()
+        ).collect();
         // NOT the number of edges (but twice the number of edges)
-        let &total_sum = cum_row_sums.last().unwrap();
+        let total_sum = row_sums.iter().sum();
         let result = MultiGraph {
             edges,
-            cum_row_sums,
+            row_sums,
+            total_sum,
             rng: rngs::StdRng::from_rng(rand::thread_rng()).unwrap(),
             node_to_row: (0..num_nodes).collect(),
         };
@@ -93,11 +102,11 @@ impl MultiGraph {
     }
 
     /// Helper function for the constructor.
-    fn check_nodes_edges_not_0(num_nodes: usize, num_edges: usize) -> io::Result<()> {
-        if num_nodes == 0 || num_edges == 0 {
+    fn check_nodes_edges(num_nodes: usize, num_edges: usize) -> io::Result<()> {
+        if num_nodes <= 1 || num_edges == 0 {
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "The graph needs to have nodes and edges.",
+                "The graph needs to have at least two nodes and must be connected.",
             ))
         } else {
             Ok(())
@@ -105,21 +114,33 @@ impl MultiGraph {
     }
 
     /// Helper function for the constructor.
-    fn check_exactly_2_numbers(splitted: &Vec<usize>) -> io::Result<()> {
-        if splitted.len() != 2 {
+    fn retrieve_source_target(line: &str) -> io::Result<(usize, usize)> {
+        let mut splitted = line
+            .split_ascii_whitespace()
+            .map(|s| Self::parse::<usize>(s, "a node number"));
+        let source = splitted.next();
+        let target = splitted.next();
+        if splitted.next().is_some() {
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Expected exactly two numbers on each \
                  line starting from the third.",
             ))
         } else {
-            Ok(())
+            match (source, target) {
+                (Some(source), Some(target)) => Ok((source?, target?)),
+                _ => Err(io::Error::new(io::ErrorKind::InvalidInput,
+                "Expected exactly two numbers on each \
+                 line starting from the third.",
+            ))
+            }
         }
     }
 
     /// Helper function for the constructor.
-    fn check_node_ref_in_range(splitted: &Vec<usize>, num_nodes: usize) -> io::Result<()> {
-        if splitted[0] >= num_nodes || splitted[1] >= num_nodes {
+    fn check_node_ref_in_range(source: usize, target: usize, num_nodes: usize)
+        -> io::Result<()> {
+        if source >= num_nodes || target >= num_nodes {
             Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "Node number too large.",
@@ -143,7 +164,9 @@ impl MultiGraph {
 
     /// Current number of edges in the graph.
     pub fn num_edges_current(&self) -> usize {
-        self.edges.stored_entries().map(|v| *v as usize).sum()
+        // self loops aren't allowed so this should work
+        // (otherwise you'd have to "exclude" them from the `/2`)
+        self.cum_row_sums().nth(self.row_sums.len() - 1).unwrap() / 2
     }
 
     /// Current number of nodes in the graph.
@@ -169,17 +192,21 @@ impl MultiGraph {
     /// graph are represented by an internal node index.
     pub fn random_edge(&mut self) -> [usize; 2] {
         // random offset between 1 and (including) the cumulative sum of all rows
-        let offset = self.rng.gen_range(1, *self.cum_row_sums.last().unwrap() + 1);
+        let offset = self.rng.gen_range(1, self.total_sum + 1);
         let row = self
-            .cum_row_sums
-            .iter()
+            .cum_row_sums()
             // Find the first position in the cumulative sum that is bigger than
             // our random number.
-            .position(|&e| e >= offset)
+            .position(|e| e >= offset)
             // Note that this cannot panic because the distribution only goes up
-            // to the larges element in cum_row_sums.
+            // to the larges element in cum_row_sums (== total_sum).
             .unwrap();
-        let prev_rows_sum = if row >= 1 { self.cum_row_sums[row - 1] } else { 0 };
+        // TODO: potential optimization: optimize away the 2nd call to
+        // cum_row_sums()
+        // The unwrap() cannot panic since we calculated row using
+        // cum_row_sums() above and the row sums cannot have changed since then.
+        // The `0..1.chain()` just adds a 0 at the front of the iterator.
+        let prev_rows_sum = (0..1).chain(self.cum_row_sums()).nth(row).unwrap();
         let col_offset = offset - prev_rows_sum;
         let col = self
             .edges
@@ -231,6 +258,35 @@ impl MultiGraph {
             .map(|(i, _)| i)
     }
 
+    /// This function should always be used to assign to `self.edges` because
+    /// it makes sure that `self.cum_row_sums` stays updated.
+    fn assign_edge_count(&mut self, row: usize, col: usize, new_value: EdgeCount) {
+        let prev_value = self.edges[[row, col]];
+        let diff = new_value as isize - prev_value as isize;
+        self.row_sums[row] = (self.row_sums[row] as isize + diff) as usize;
+        self.row_sums[col] = (self.row_sums[col] as isize + diff) as usize;
+        self.total_sum = (self.total_sum as isize + diff) as usize;
+        if row != col { // if not on diagonal it needs to be added twice
+            self.total_sum = (self.total_sum as isize + diff) as usize;
+        }
+        self.edges[[row, col]] = new_value;
+    }
+
+    /// Calls `self.edges.delete_row_and_col_0()` but updates `self.row_sums`
+    /// and `self.total_sum`.
+    fn delete_row_and_col_0(&mut self) {
+        let sum_0 = self.row_sums[0];
+        let mut new_total = 0;
+        for i in 1..self.row_sums.len() {
+            self.row_sums[i - 1] = self.row_sums[i] - self.edges[[i, 0]] as usize;
+            new_total += self.row_sums[i - 1];
+        }
+        let _ = self.row_sums.pop();
+        // self.total_sum -= 2 * sum_0 + self.edges[[0, 0]] as usize;
+        self.total_sum = new_total;
+        self.edges.delete_row_and_col_0();
+    }
+
     /// # Panics
     /// If the edge does not exist (i.e. if the  nodes are out of bounds or
     /// if the nodes exist but aren't connected).
@@ -249,11 +305,15 @@ impl MultiGraph {
         // no need to add / move columns as well since the matrix ensures it's
         // symmetrical
         for i in 0..self.edges.dimension() {
-            self.edges[[sum_target, i]] += self.edges[[sum_source, i]];
-            self.edges[[sum_source, i]] = self.edges[[0, i]];
+            // `self.edges[[sum_target, i]] += self.edges[[sum_source, i]];`
+            self.assign_edge_count(sum_target, i,
+                                   self.edges[[sum_target, i]]
+                                   + self.edges[[sum_source, i]]);
+            // `self.edges[[sum_source, i]] = self.edges[[0, i]];`
+            self.assign_edge_count(sum_source, i, self.edges[[0, i]]);
         }
         // ignore self-loops
-        self.edges[[sum_target, sum_target]] = 0;
+        self.assign_edge_count(sum_target, sum_target, 0);
         // TODO: possible optimization: use a different data structure to store
         // the associations.
         // (but the contraction already requires linear time so that wouldn't
@@ -267,16 +327,8 @@ impl MultiGraph {
             // we're deleting row/col 0, so all indexes get reduced by one
             *el -= 1;
         }
-        self.edges.delete_row_and_col_0();
-        self.cum_row_sums.clear();
-        self.cum_row_sums.push(self.edges.row_iter(0)
-                               .map(|v| *v as usize).sum());
-        for i in 1..self.edges.dimension() {
-            self.cum_row_sums.push(self.cum_row_sums[i-1] + self.edges
-                                   .row_iter(i)
-                                   .map(|v| *v as usize)
-                                   .sum::<usize>());
-        }
+        self.delete_row_and_col_0();
+        // self.row_sums is updated automatically by self.assign_edge_count.
     }
 }
 
@@ -288,11 +340,10 @@ impl From<Matrix<EdgeCount>> for MultiGraph {
         if m.dimension() == 0 {
             panic!("No nodes.");
         }
-        let cum_row_sums: Vec<usize> = (0..m.dimension()).scan(0, |acc, row| {
-                *acc += m.row_iter(row).map(|v| *v as usize).sum::<usize>();
-                Some(*acc)
-        }).collect();
-        let total_sum = *cum_row_sums.last().unwrap();
+        let row_sums: Vec<usize> = (0..m.dimension()).map(|row|
+                m.row_iter(row).map(|v| *v as usize).sum::<usize>()
+        ).collect();
+        let total_sum = row_sums.iter().sum();
         let node_to_row = (0..m.dimension()).collect();
         MultiGraph::check_self_loops(&m).unwrap();
         if total_sum/2 == 0 {
@@ -300,7 +351,8 @@ impl From<Matrix<EdgeCount>> for MultiGraph {
         }
         MultiGraph {
             edges: m,
-            cum_row_sums,
+            row_sums,
+            total_sum,
             rng: rngs::StdRng::from_rng(rand::thread_rng()).unwrap(),
             node_to_row,
         }
@@ -372,10 +424,17 @@ mod tests {
         m[[0, 1]] = 1;
         m[[0, 2]] = 1;
         m[[1, 2]] = 1;
+        // m looks like this:
+        // 0, 1, 1
+        // 1, 0, 1
+        // 1, 1, 0
         let mut mg = MultiGraph::from(m);
-        println!("{:?}", mg);
+        dbg!(&mg);
+        assert_eq!(mg.num_edges_current(), 3);
+        println!("                                       starting contraction");
         mg.contract_edge([0, 1]);
         println!("{:?}", mg);
+        println!("contraction succeeded!!");
         // before:
         //     0
         //    / \
@@ -451,5 +510,91 @@ mod tests {
         let i1_new = find_internal_index(&mg2, 1);
         assert_eq!(mg2.num_edges_between(i023, i1_new), 3);
         assert_eq!(mg2.num_nodes_current(), 2);
+
+        let mut m = Matrix::new(4);
+        m[[0, 1]] = 1; m[[0, 2]] = 4; m[[0, 3]] = 3;
+                       m[[1, 2]] = 1; m[[1, 3]] = 2;
+                                      m[[2, 3]] = 1;
+        let mut mg3 = MultiGraph::from(m);
+        // m looks like this:
+        // 0, 1, 4, 3
+        // 1, 0, 1, 2
+        // 4, 1, 0, 1
+        // 3, 2, 1, 0
+        // the graph looks like:
+        //  0-------1
+        //  | \  /  |
+        // (4) /\  (2)
+        //  | /  (3)|
+        //  2-------3
+        mg3.contract_edge([1, 2]);
+        println!("{:?}", mg3);
+        let i12 = find_internal_index(&mg3, 1);
+        let i0 = find_internal_index(&mg3, 0);
+        let i3 = find_internal_index(&mg3, 3);
+        assert_eq!(mg3.num_edges_between(i12, i0), 5);
+        assert_eq!(mg3.num_edges_between(i12, i3), 3);
+        assert_eq!(mg3.num_edges_between(i0, i3), 3);
+    }
+
+    #[test]
+    fn assign_edge_count() {
+        let mut m = Matrix::new(4);
+        m[[0, 1]] = 1; m[[0, 2]] = 4; m[[0, 3]] = 3;
+                       m[[1, 2]] = 1; m[[1, 3]] = 2;
+                                      m[[2, 3]] = 1;
+        let mut mg = MultiGraph::from(m);
+        // m looks like this:
+        // 0, 1, 4, 3
+        // 1, 0, 1, 2
+        // 4, 1, 0, 1
+        // 3, 2, 1, 0
+        assert_eq!(mg.row_sums, vec![8, 4, 6, 6]);
+        assert_eq!(mg.total_sum, 24);
+        mg.assign_edge_count(0, 1, 42);
+        // m now looks like this:
+        // 0, 42, 4, 3
+        // 42, 0, 1, 2
+        // 4, 1, 0, 1
+        // 3, 2, 1, 0
+        assert_eq!(mg.edges[[1, 0]], 42);
+        assert_eq!(mg.row_sums, vec![49, 45, 6, 6]);
+        assert_eq!(mg.total_sum, 106);
+        mg.assign_edge_count(2, 3, 5);
+        // m now looks like this:
+        // 0, 42, 4, 3
+        // 42, 0, 1, 2
+        // 4, 1, 0, 5
+        // 3, 2, 5, 0
+        assert_eq!(mg.edges[[3, 2]], 5);
+        assert_eq!(mg.row_sums, vec![49, 45, 10, 10]);
+        assert_eq!(mg.total_sum, 114);
+        mg.assign_edge_count(0, 1, 8);
+        // m now looks like this:
+        // 0, 8, 4, 3
+        // 8, 0, 1, 2
+        // 4, 1, 0, 5
+        // 3, 2, 5, 0
+        assert_eq!(mg.edges[[1, 0]], 8);
+        assert_eq!(mg.row_sums, vec![15, 11, 10, 10]);
+        assert_eq!(mg.total_sum, 46);
+    }
+
+    #[test]
+    fn delete_row_and_col_0() {
+        let mut m = Matrix::new(4);
+        m[[0, 1]] = 1; m[[0, 2]] = 4; m[[0, 3]] = 3;
+                       m[[1, 2]] = 1; m[[1, 3]] = 2;
+                                      m[[2, 3]] = 1;
+        let mut mg = MultiGraph::from(m);
+        mg.edges[[0, 0]] = 9;
+        // m looks like this:
+        // 9, 1, 4, 3
+        // 1, 0, 1, 2
+        // 4, 1, 0, 1
+        // 3, 2, 1, 0
+        mg.delete_row_and_col_0();
+        assert_eq!(mg.row_sums, vec![3, 2, 3]);
+        assert_eq!(mg.total_sum, 8);
     }
 }
