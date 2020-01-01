@@ -157,7 +157,11 @@ fn internal_fastcut(mg: MultiGraph, depth: usize) -> MinCutEstimate {
         }
         min(m1, m2)
     } else {
-        MinCutEstimate::new(mg)
+        // `mg` might still contain the original matrix. The matrix doesn't
+        // deallocate it's storage upon row deletion so cloning might save quite
+        // a lot of memory. It's cheap to do anyway since we know the matrix is
+        // only 2x2 at this point.
+        MinCutEstimate::new(mg.clone())
     }
 }
 

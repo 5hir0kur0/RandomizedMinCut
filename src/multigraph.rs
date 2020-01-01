@@ -274,7 +274,7 @@ impl MultiGraph {
     /// Calls `self.edges.delete_row_and_col_0()` but updates `self.row_sums`
     /// and `self.total_sum`.
     fn delete_row_and_col_0(&mut self) {
-        let sum_0 = self.row_sums[0];
+        // let sum_0 = self.row_sums[0];
         let mut new_total = 0;
         for i in 1..self.row_sums.len() {
             self.row_sums[i - 1] = self.row_sums[i] - self.edges[[i, 0]] as usize;

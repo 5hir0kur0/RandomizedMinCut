@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if [ -n "$DEBUG" ]; then
+if [ "$DEBUG" = 1 ]; then
     echo 'cargo run --release -- ' "$@"
     cargo run --release -- "$@"
 else
