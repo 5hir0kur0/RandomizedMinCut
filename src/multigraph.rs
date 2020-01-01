@@ -47,7 +47,7 @@ impl MultiGraph {
         Self::parse(&num, unit)
     }
 
-    /// Calcualtes the cumulative row sums.
+    /// Calculates the cumulative row sums.
     fn cum_row_sums(&self) -> impl Iterator<Item=usize> + '_ {
         self.row_sums.iter().scan(0, |acc, row| {
                 *acc += row;
@@ -294,7 +294,7 @@ impl MultiGraph {
     /// a bug).
     pub fn contract_edge(&mut self, edge: [usize; 2]) {
         if self.edges[edge] == 0 {
-            panic!("Trying to contract a nonexistent edge.");
+            panic!("Trying to contract a nonexistent edge: {:?}", edge);
         }
         if edge[0] == edge[1] {
             panic!("Self-loop detected.");
@@ -333,6 +333,15 @@ impl MultiGraph {
     /// Create a new RNG.
     pub fn new_rng(&mut self) {
         self.rng = rngs::StdRng::from_rng(rand::thread_rng()).unwrap();
+    }
+
+    /// Iterator over all edges that are present (i.e. if the edge count between
+    /// two nodes is 0, the edge won't appear).
+    /// Note that multi-edges will only be returned once.
+    pub fn edges(&self) -> impl Iterator<Item=[usize; 2]> + '_ {
+        self.edges.stored_entries_with_coordinates()
+            .filter(|&(_, &count)| count > 0)
+            .map(|(edge, _)| edge)
     }
 }
 
@@ -444,7 +453,7 @@ mod tests {
         //    / \
         //   1---2
         // after (expected):
-        // 0,1---2
+        // 0,1--(2)--2
         assert_eq!(mg.num_edges_current(), 2);
         assert_eq!(mg.original_nodes_of(0), vec![0, 1]);
         // There is only one edge left.

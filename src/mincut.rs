@@ -5,6 +5,16 @@ use std::io;
 use std::iter::FromIterator;
 use std::thread;
 
+/// Check if the graph is a tree for graphs with at most CHECK_TREE_OPT_THRESHOLD
+/// nodes. Set to 0 to disable.
+/// This won't make a big difference for very dense graphs (d > 0.5).
+/// It can, however, make a big difference for small densities.
+/// For example, I measured more than 15x speedup with this value (compared to 0)
+/// for a graph with d=0.01 and n=2000.
+const CHECK_TREE_OPT_THRESHOLD: usize = 7;
+/// the number of threads will be 2^THREAD_LAUNCH_THRESHOLD.
+const THREAD_LAUNCH_THRESHOLD: usize = 3;
+
 #[derive(Debug)]
 /// Return type for min-cut algorithms.
 pub struct MinCutEstimate {
@@ -139,15 +149,41 @@ pub fn fastcut(mg: MultiGraph) -> MinCutEstimate {
     internal_fastcut(mg, 0)
 }
 
+/// In the case of a tree, the computation of the mincut is trivial as there
+/// are only a linear number of possibilies. This function just repeatedly
+/// contracts the edge which represents the highest number of edges in the
+/// original graph.
+fn tree_optimization(mut mg: MultiGraph) -> MinCutEstimate {
+    while mg.num_nodes_current() > 2 {
+        let edge = mg.edges()
+            .max_by_key(|&[from, to]| mg.num_edges_between(from, to))
+            // This cannot fail because there are more than two nodes left and
+            // we know that the graph is connected.
+            .unwrap();
+        mg.contract_edge(edge);
+    }
+    MinCutEstimate::new(mg)
+}
+
 fn internal_fastcut(mg: MultiGraph, depth: usize) -> MinCutEstimate {
     let n = mg.num_nodes_current();
     if n > 2 {
         let desired_node_num = ((n + 1) as f64 / f64::sqrt(2.0)) as usize;
         let m1;
         let m2;
-        if depth >= 3 {
-            m1 = internal_fastcut(contract(mg.clone(), desired_node_num), depth + 1);
-            m2 = internal_fastcut(contract(mg, desired_node_num), depth + 1);
+        if depth >= THREAD_LAUNCH_THRESHOLD {
+            // In general, the best way to make this faster would be to brute
+            // force the solution for graphs smaller than a certain size.
+            // I chose to optimize the case where the graph is a tree because
+            // it seemed like a low-hanging fruit.
+            if n <= CHECK_TREE_OPT_THRESHOLD {
+                let e = mg.edges().count();
+                if e + 1 == n {
+                    return tree_optimization(mg);
+                }
+            }
+            m1 = internal_fastcut(contract(mg.clone(), desired_node_num), depth);
+            m2 = internal_fastcut(contract(mg, desired_node_num), depth);
         } else {
             let mg_clone = mg.clone();
             let t = thread::spawn(move ||

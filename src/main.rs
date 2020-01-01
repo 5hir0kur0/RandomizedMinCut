@@ -20,14 +20,14 @@ fn main() -> std::io::Result<()> {
     if let Some(arg) = args.peek() {
         if arg == "-v" {
             visualize = true;
-            drop(arg); let _ = args.next();
+            let _ = args.next();
         } else if arg == "-s" {
             check_connected = false;
-            drop(arg); let _ = args.next();
+            let _ = args.next();
         } else if arg == "-vs" || arg == "-sv" {
             visualize = true;
             check_connected = false;
-            drop(arg); let _ = args.next();
+            let _ = args.next();
         }
     }
     if args.peek().is_none() {
@@ -47,6 +47,7 @@ fn main() -> std::io::Result<()> {
         let out_path = unique_name(&path_arg);
         let file = File::create(&out_path)?;
         let mut writer = io::BufWriter::new(file);
+        //let (mincut, time) = mincut(mg, check_connected, mincut::guess_mincut);
         let (mincut, time) = mincut(mg, check_connected, mincut::fastcut);
         eprintln!("Finished algorithm.");
         eprintln!("{:?}", mincut);
@@ -55,6 +56,7 @@ fn main() -> std::io::Result<()> {
         println!("RUNTIME: {}: {}ms", path.display(), time);
         println!("CUTSIZE: {}: {}", path.display(), mincut.cut_size);
     } else {
+        //let (mincut, time) = mincut(mg, check_connected, mincut::guess_mincut);
         let (mincut, time) = mincut(mg, check_connected, mincut::fastcut);
         eprintln!("{:?}", mincut);
         eprintln!("Finished algorithm.");
@@ -107,14 +109,13 @@ fn run_until_no_improvements<F>(f: F, mg: MultiGraph, rounds: usize)
     -> mincut::MinCutEstimate
 where F: Fn(MultiGraph) -> mincut::MinCutEstimate
 {
-    let mut start = 1;
     let mut iters = 1;
     eprintln!("Starting round {}...", iters);
     let mut best = f(mg.clone());
     eprintln!(" current best: {}", best.cut_size);
     loop {
         let mut stop = true;
-        for _ in start..rounds {
+        for _ in 0..rounds {
             iters += 1;
             eprintln!("Starting round {}...", iters);
             let mut new_mg = mg.clone();
@@ -132,6 +133,5 @@ where F: Fn(MultiGraph) -> mincut::MinCutEstimate
             println!("ITERATIONS: {}", iters);
             return best;
         }
-        start = 0;
     }
 }

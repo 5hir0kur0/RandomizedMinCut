@@ -145,10 +145,9 @@ fn upper_right_index([row, col]: [usize; 2], num_rows: usize) -> usize {
 /// Panics if `row >= num_rows` or `col >= num_rows`.
 fn calculate_index([row, col]: [usize; 2], num_rows: usize, offset: usize)
     -> usize {
-    if row >= num_rows || col >= num_rows {
-        panic!("Index out of range: [{}, {}] (Matrix is size {2}x{2})", row,
-               col, num_rows);
-    }
+    debug_assert!(row < num_rows && col < num_rows,
+        "Index out of range: [{}, {}] (Matrix is size {2}x{2})", row,
+        col, num_rows);
     offset + if row <= col {
         upper_right_index([row, col], num_rows)
     } else {
