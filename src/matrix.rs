@@ -4,7 +4,7 @@ use std::fmt;
 
 /// Store a quadratic symmetrical matrix.
 pub struct Matrix<T: Default + Clone> {
-    /// Expoloit that the matrix is symmetrical and only store half of it.
+    /// Exploit that the matrix is symmetrical and only store half of it.
     /// Only the entries with row <= column are stored.
     upper_right: Vec<T>,
     num_rows: usize,
@@ -58,7 +58,7 @@ impl<T: Default + Clone> Matrix<T> {
     /// Iterator over the entries that are actually stored.
     /// I.e. entries that are the same as stored entries for symmetrical reasons
     /// won't be in the iterator.
-    /// The array contrains the coordinates with the first coordinate being
+    /// The array contains the coordinates with the first coordinate being
     /// smaller than or equal to the second.
     pub fn stored_entries_with_coordinates(&self) -> impl Iterator<Item=([usize; 2], &T)> {
         EntryIter {
@@ -95,7 +95,7 @@ impl<T> fmt::Debug for Matrix<T>
 
 impl<T> Clone for Matrix<T> where T: Default + Clone {
     /// Clone the matrix.
-    /// Note that this does *not* copy the deleted rows and colums, but since
+    /// Note that this does *not* copy the deleted rows and columns, but since
     /// those are not accessible through the public interface of `Matrix` anyway
     /// this is not a problem (but saves a lot of memory).
     fn clone(&self) -> Self {

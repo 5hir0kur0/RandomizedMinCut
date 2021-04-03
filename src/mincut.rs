@@ -131,7 +131,7 @@ impl MinCutEstimate {
     }
 }
 
-/// GUESSMINCUT algorithm from page 20 in the lecture notes.
+/// GUESSMINCUT algorithm (randomly contracts edges)
 /// The graph has to be connected. You can check with `check_connected`.
 /// Also it must have at least two nodes.
 pub fn guess_mincut(mut mg: MultiGraph) -> MinCutEstimate {
@@ -142,7 +142,8 @@ pub fn guess_mincut(mut mg: MultiGraph) -> MinCutEstimate {
     MinCutEstimate::new(mg)
 }
 
-/// FASTCUT algorithm from page 21 in the lecture notes.
+/// FASTCUT algorithm by Karger and Stein (see Figure 6 in
+/// [A New Approach to the Minimum Cut Problem](https://doi.org/10.1145/234533.234534)).
 /// The graph has to be connected. You can check with `check_connected`.
 /// Also it must have at least two nodes.
 pub fn fastcut(mg: MultiGraph) -> MinCutEstimate {
@@ -321,7 +322,7 @@ mod tests {
         let mg = MultiGraph::from(m);
         let (cc, _) = dfs(&mg, 4).unwrap();
         let h456 = HashSet::from_iter(vec![4, 5, 6]);
-        assert!(cc == h456);
+        assert_eq!(cc, h456);
     }
 
     #[test]
