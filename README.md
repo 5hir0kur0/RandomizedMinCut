@@ -1,4 +1,4 @@
-# Randomized MinCut Algorithm (FastCut)
+# Randomized MinCut Algorithm (FastCut) – Archive
 
 This repository contains a Rust implementation of the "FastCut" randomized minimum cut algorithm
 introduced by Karger and Stein (see Figure 6 in [A New Approach to the Minimum Cut Problem](https://doi.org/10.1145/234533.234534)).
